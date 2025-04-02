@@ -25,7 +25,7 @@ Install Python on the system.
 
 2. The custom libvirt hook script depends on [Fabric Manager Partition Manager](https://github.com/NVIDIA/Fabric-Manager-Client).  \
 Install its dependencies.
-    1. Install the NVIDIA Fabric Mnager Development package. \
+    1. Install the NVIDIA Fabric Manager Development package. \
        On Ubuntu, this package is named "nvidia-fabricmanager-dev-\<version\>" \
        On RHEL, this package is named "nvidia-fabricmanager-devel-\<version\>"
 
@@ -34,7 +34,7 @@ Install its dependencies.
        On RHEL, this package is named "jsoncpp-devel \
        The [EPEL repository](https://www.redhat.com/en/blog/install-epel-linux) must be set up on your system to access this package.
        
-    3. Obtain Fabric Manager Partition Manager source and build it. \
+    3. Obtain [Fabric Manager Partition Manager](https://github.com/NVIDIA/Fabric-Manager-Client) source and build it. \
        Deploy the binary fmpm in /usr/bin/
 
 3. Install the NVIDIA Fabric Manager. \
@@ -50,7 +50,7 @@ sed -i 's/FABRIC_MODE=./FABRIC_MODE=1/g' /usr/share/nvidia/nvswitch/fabricmanage
 sudo systemctl restart nvidia-fabricmanager.service
 ```
 
-5. Install the NVIDIA Fabric Manager Development Packet for the Fabric Manager SDK. \
+5. Install the NVIDIA Fabric Manager Development package for the Fabric Manager SDK. \
 On RHEL, this package is named "nvidia-fabricmanager-devel-\<version\>" \
 On Ubuntu, this package is named "nvidia-fabricmanager-dev-\<version\>" 
 
