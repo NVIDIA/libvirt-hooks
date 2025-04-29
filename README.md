@@ -61,6 +61,31 @@ sudo wget 'https://raw.githubusercontent.com/NVIDIA/libvirt-hooks/refs/heads/mai
 sudo chmod +x /etc/libvirt/hooks/qemu
 sudo systemctl restart libvirtd
 ```
+
+If using the host to manage the NVSwitches, the Fabric Manager runs on the host \
+and configured to listen on the default interface 127.0.0.1.  No change is needed \
+to the libvirt hook script.
+
+If using a dedicated Service VM to manage the NVSwitches with all NVSwitches passed through \
+to the Service VM, the Fabric Manager runs on the Service VM and is configured \
+to listen on the Service VM's network interface xxx.yyy.zzz.www.
+
+Update the libvirt hook script with the IP and port number FM is configured to listen on \
+
+```
+SERVICE_VM_IP = "xxx.yyy.zzz.www"
+PORT_NUM="xxx"
+sed -i "s/\(FM_IP = \)\"[^\"]*\"/\1\"$SERVICE_VM_IP:$PORT_NUM\"/" /etc/libvirt/hooks/qemu
+
+```
+
+If the Fabric Manager in the Service VM is configured to listen on the default port number, \
+skip the PORT_NUM update in the libvirt hook script.
+```
+sed -i "s/\(FM_IP = \)\"[^\"]*\"/\1\"$SERVICE_VM_IP\"/" /etc/libvirt/hooks/qemu
+```
+
+
 # License
 
 By downloading or using this software, I agree to the terms of the [LICENSE](LICENSE)

@@ -27,6 +27,34 @@ def call(args):
     subprocess.check_call(args)
 
 
+def gpusExist(xmlHostdevs):
+    num_gpus = 0
+
+    gpu_bdfs = set()
+    output = subprocess.run(r'nvidia-smi -q | grep -i "GPU 00000000"', shell=True, universal_newlines=True, stdout=subprocess.PIPE).stdout
+    for line in output.split("\n"):
+        if line:
+            gpu_bdfs.add(line.split(":",1)[1].lower())
+
+    for pci_hostdev_addr in xmlHostdevs:
+        if pci_hostdev_addr is None:
+            LOG.debug("No PCI hostdev devices passed through to the VM")
+            break
+
+        # Form BDF string from <address bus slot function/> in VM xml
+        pci_hostdev_addr_bus = int(pci_hostdev_addr.get('bus'),0)
+        pci_hostdev_addr_device = int(pci_hostdev_addr.get('slot'),0)
+        pci_hostdev_addr_function = int(pci_hostdev_addr.get('function'),0)
+        pci_hostdev_bdf_from_xml = format(pci_hostdev_addr_bus, '02X') + ':' + format(pci_hostdev_addr_device, '02X') + '.' + format(pci_hostdev_addr_function, '01X')
+
+        if pci_hostdev_bdf_from_xml in gpu_bdfs:
+            num_gpus += 1
+
+    if num_gpus > 0:
+        return True
+
+    return False
+
 def main():
     LOG.debug("Arguments: %s", sys.argv)
 
@@ -41,11 +69,21 @@ def main():
         LOG.debug("Nothing to do: only prepare or release are hooked")
         sys.exit(0)
 
+    FM_IP = "127.0.0.1"
+
+    xml = sys.stdin.read()
+    LOG.debug("VM libvirt XML: %s", xml)
+    root = etree.fromstring(xml)
+    # Skip if no GPUs detected in XML, i.e. service VM
+    if not gpusExist(root.findall("./devices/hostdev[@type='pci']/source/address")):
+        LOG.debug("No GPUs detected in VM - exiting hook script")
+        sys.exit(0)
+
     # Extract current GPU partitions' state and info in json format
     try:
-        output = subprocess.check_output("/usr/bin/fmpm -l", shell = True)
+        output = subprocess.check_output("/usr/bin/fmpm -l --hostname " + FM_IP, shell = True)
     except subprocess.CalledProcessError as e:
-        ret = sys.stderr.write('/usr/bin/fmpm -l failed. ' + str(e.returncode))
+        ret = sys.stderr.write('/usr/bin/fmpm -l --hostname ' + FM_IP + ' failed: ' + str(e.returncode))
         sys.exit(0)
 
 
@@ -95,9 +133,6 @@ def main():
 
     LOG.debug("GPU BDF to GPU Module ID mapping: %s", gpus_bdf_to_mod)
 
-    xml = sys.stdin.read()
-    LOG.debug("VM libvirt XML: %s", xml)
-    root = etree.fromstring(xml)
     num_pci_bdf_from_xml = len(root.findall("./devices/hostdev[@type='pci']/source/address"))
 
     # Build Nvidia GPU Module ID list from GPUs in the VM XML
@@ -124,7 +159,7 @@ def main():
     LOG.debug("GPU Module IDs %s for GPUs passed through in the VM XML", gpu_mod_list_from_xml)
 
     # Extract current GPU partitions' state and info in json format
-    output = subprocess.check_output("/usr/bin/fmpm -l", shell = True)
+    output = subprocess.check_output("/usr/bin/fmpm -l --hostname " + FM_IP, shell = True)
     gpu_partition_json = output.decode("utf-8")
     gpu_partition_json_data = json.loads(gpu_partition_json)
 
@@ -158,7 +193,7 @@ def main():
         LOG.debug("GPU partition %s contains GPUs as passed throught in the VM XML", gpu_partition_id)
 
     # Extract current GPU partitions' state and info in json format
-    output = subprocess.check_output("/usr/bin/fmpm -l", shell = True)
+    output = subprocess.check_output("/usr/bin/fmpm -l --hostname " + FM_IP, shell = True)
     gpu_partition_json = output.decode("utf-8")
     gpu_partition_json_data = json.loads(gpu_partition_json)
 
@@ -192,7 +227,7 @@ def main():
         # De-activate the GPU Partition
         partition_action = '-d'
 
-    cmd = '/usr/bin/fmpm ' + partition_action + ' ' + str(gpu_partition_id)
+    cmd = '/usr/bin/fmpm ' + partition_action + ' ' + str(gpu_partition_id) + ' --hostname ' + FM_IP
     LOG.debug("Action = %s. Executing command: %s", action, cmd)
     rc, out = subprocess.getstatusoutput(cmd)
     if rc != 0:
