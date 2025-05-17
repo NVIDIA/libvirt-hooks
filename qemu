@@ -47,7 +47,7 @@ def gpusExist(xmlHostdevs):
         pci_hostdev_addr_function = int(pci_hostdev_addr.get('function'),0)
         pci_hostdev_bdf_from_xml = format(pci_hostdev_addr_bus, '02X') + ':' + format(pci_hostdev_addr_device, '02X') + '.' + format(pci_hostdev_addr_function, '01X')
 
-        if pci_hostdev_bdf_from_xml in gpu_bdfs:
+        if pci_hostdev_bdf_from_xml.lower() in gpu_bdfs:
             num_gpus += 1
 
     if num_gpus > 0:
