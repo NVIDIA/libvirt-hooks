@@ -9,18 +9,18 @@
 import json
 import logging
 from logging.handlers import SysLogHandler
-import os
 import subprocess
 import sys
 import xml.etree.ElementTree as etree
 
 LOG = logging.getLogger(__name__)
 LOG.setLevel(logging.DEBUG)
-handler = SysLogHandler(facility=SysLogHandler.LOG_DAEMON,address='/dev/log')
+handler = SysLogHandler(facility=SysLogHandler.LOG_DAEMON, address='/dev/log')
 handler.setLevel(logging.DEBUG)
 fmt = logging.Formatter('libvirt-hook: %(levelname)s: %(message)s')
 handler.setFormatter(fmt)
 LOG.addHandler(handler)
+
 
 def call(args):
     LOG.debug("About to execute %s " % ' '.join(args))
@@ -31,10 +31,11 @@ def gpusExist(xmlHostdevs):
     num_gpus = 0
 
     gpu_bdfs = set()
-    output = subprocess.run(r'nvidia-smi -q | grep -i "GPU 00000000"', shell=True, universal_newlines=True, stdout=subprocess.PIPE).stdout
+    output = subprocess.run(r'nvidia-smi -q | grep -i "GPU 00000000"', shell=True, universal_newlines=True,
+                            stdout=subprocess.PIPE).stdout
     for line in output.split("\n"):
         if line:
-            gpu_bdfs.add(line.split(":",1)[1].lower())
+            gpu_bdfs.add(line.split(":", 1)[1].lower())
 
     for pci_hostdev_addr in xmlHostdevs:
         if pci_hostdev_addr is None:
@@ -42,10 +43,12 @@ def gpusExist(xmlHostdevs):
             break
 
         # Form BDF string from <address bus slot function/> in VM xml
-        pci_hostdev_addr_bus = int(pci_hostdev_addr.get('bus'),0)
-        pci_hostdev_addr_device = int(pci_hostdev_addr.get('slot'),0)
-        pci_hostdev_addr_function = int(pci_hostdev_addr.get('function'),0)
-        pci_hostdev_bdf_from_xml = format(pci_hostdev_addr_bus, '02X') + ':' + format(pci_hostdev_addr_device, '02X') + '.' + format(pci_hostdev_addr_function, '01X')
+        pci_hostdev_addr_bus = int(pci_hostdev_addr.get('bus'), 0)
+        pci_hostdev_addr_device = int(pci_hostdev_addr.get('slot'), 0)
+        pci_hostdev_addr_function = int(pci_hostdev_addr.get('function'), 0)
+        pci_hostdev_bdf_from_xml = format(pci_hostdev_addr_bus, '02X') + ':' + format(pci_hostdev_addr_device,
+                                                                                      '02X') + '.' + format(
+            pci_hostdev_addr_function, '01X')
 
         if pci_hostdev_bdf_from_xml.lower() in gpu_bdfs:
             num_gpus += 1
@@ -54,6 +57,7 @@ def gpusExist(xmlHostdevs):
         return True
 
     return False
+
 
 def main():
     LOG.debug("Arguments: %s", sys.argv)
@@ -81,89 +85,69 @@ def main():
 
     # Extract current GPU partitions' state and info in json format
     try:
-        output = subprocess.check_output("/usr/bin/fmpm -l --hostname " + FM_IP, shell = True)
+        output = subprocess.check_output("/usr/bin/fmpm -l --hostname " + FM_IP, shell=True)
     except subprocess.CalledProcessError as e:
         ret = sys.stderr.write('/usr/bin/fmpm -l --hostname ' + FM_IP + ' failed: ' + str(e.returncode))
         sys.exit(0)
 
-
     gpu_partition_json = output.decode("utf-8")
     gpu_partition_json_data = json.loads(gpu_partition_json)
 
-    platform = subprocess.check_output("dmidecode -t 1 | grep Product | awk -F \": \" '{print $2}'", shell = True)
+    platform = subprocess.check_output("dmidecode -t 1 | grep Product | awk -F \": \" '{print $2}'", shell=True)
     platform = platform.decode("utf-8").strip()
     LOG.debug("DEBUG: Platform is %s", platform)
 
-    # Build GPU Module ID to GPU BDF dictionary
+    # Build GPU Module ID to GPU BDF dictionary and GPU BDF to GPU Module ID dictionary
     gpus_mod_to_bdf = {}
+    gpus_bdf_to_mod = {}
     prior_line = ""
     module_id_string = "Module ID"
     if (("DGX-2" in platform) or ("V100" in platform) or ("A100" in platform) or ("A800" in platform)):
         for i in range(int(gpu_partition_json_data["partitionInfo"][0]["numGpus"])):
             mod_id = str(gpu_partition_json_data["partitionInfo"][0]["gpuInfo"][i]["physicalId"])
             bdf = gpu_partition_json_data["partitionInfo"][0]["gpuInfo"][i]["pciBusId"]
-            gpus_mod_to_bdf[mod_id] = bdf.split(":",1)[1].strip()
+            gpus_mod_to_bdf[mod_id] = bdf.split(":", 1)[1].strip()
     else:
-        output = subprocess.run(r'nvidia-smi -q | grep -i "Module ID\|GPU 00000000"', shell=True, universal_newlines=True, stdout=subprocess.PIPE).stdout
+        output = subprocess.run(r'nvidia-smi -q | grep -i "Module ID\|GPU 00000000"', shell=True,
+                                universal_newlines=True, stdout=subprocess.PIPE).stdout
         for line in output.split("\n"):
             if module_id_string.casefold() in line.casefold():
                 mod_id = line.split(":")[1].strip()
-                gpus_mod_to_bdf[mod_id] = prior_line.split(":",1)[1]
+                gpus_mod_to_bdf[mod_id] = prior_line.split(":", 1)[1]
+                gpus_bdf_to_mod[prior_line.split(":", 1)[1]] = mod_id
             else:
                 prior_line = line
 
     LOG.debug("GPU Module ID to GPU BDF mapping: %s", gpus_mod_to_bdf)
-
-    # Build GPU BDF to GPU Module ID dictionary
-    gpus_bdf_to_mod = {}
-    prior_line = ""
-    if (("DGX-2" in platform) or ("V100" in platform) or ("A100" in platform) or ("A800" in platform)):
-        for i in range(int(gpu_partition_json_data["partitionInfo"][0]["numGpus"])):
-            mod_id = str(gpu_partition_json_data["partitionInfo"][0]["gpuInfo"][i]["physicalId"])
-            bdf = gpu_partition_json_data["partitionInfo"][0]["gpuInfo"][i]["pciBusId"]
-            gpus_bdf_to_mod[bdf.split(":",1)[1].strip()] = mod_id
-    else:
-        output = subprocess.run(r'nvidia-smi -q | grep -i "Module ID\|GPU 00000000"', shell=True, universal_newlines=True, stdout=subprocess.PIPE).stdout
-        for line in output.split("\n"):
-            if module_id_string.casefold() in line.casefold():
-                mod_id = line.split(":")[1].strip()
-                gpus_bdf_to_mod[prior_line.split(":",1)[1]] = mod_id
-            else:
-                prior_line = line
-
     LOG.debug("GPU BDF to GPU Module ID mapping: %s", gpus_bdf_to_mod)
-
-    num_pci_bdf_from_xml = len(root.findall("./devices/hostdev[@type='pci']/source/address"))
 
     # Build Nvidia GPU Module ID list from GPUs in the VM XML
     num_gpu_bdf_from_xml = 0
-    gpu_mod_list_from_xml =[]
+    gpu_mod_list_from_xml = []
     for pci_hostdev_addr in root.findall("./devices/hostdev[@type='pci']/source/address"):
         if pci_hostdev_addr is None:
             LOG.debug("No PCI hostdev devices passed through to the VM")
             break
 
         # Form BDF string from <address bus slot function/> in VM xml
-        pci_hostdev_addr_bus = int(pci_hostdev_addr.get('bus'),0)
-        pci_hostdev_addr_device = int(pci_hostdev_addr.get('slot'),0)
-        pci_hostdev_addr_function = int(pci_hostdev_addr.get('function'),0)
-        pci_hostdev_bdf_from_xml = format(pci_hostdev_addr_bus, '02X') + ':' + format(pci_hostdev_addr_device, '02X') + '.' + format(pci_hostdev_addr_function, '01X')
-    
+        pci_hostdev_addr_bus = int(pci_hostdev_addr.get('bus'), 0)
+        pci_hostdev_addr_device = int(pci_hostdev_addr.get('slot'), 0)
+        pci_hostdev_addr_function = int(pci_hostdev_addr.get('function'), 0)
+        pci_hostdev_bdf_from_xml = (format(pci_hostdev_addr_bus, '02X') + ':' +
+                                    format(pci_hostdev_addr_device, '02X') + '.' +
+                                    format(pci_hostdev_addr_function, '01X'))
+
         if pci_hostdev_bdf_from_xml in list(gpus_bdf_to_mod.keys()):
             # pci hostdev BDF from xml is a Nvidia GPU
             LOG.debug("%s is a Nvidia GPU", pci_hostdev_bdf_from_xml)
-            num_gpu_bdf_from_xml +=1
+            num_gpu_bdf_from_xml += 1
             # Add this GPU BDF's Module ID to a list
             gpu_mod_list_from_xml.append(int(gpus_bdf_to_mod[pci_hostdev_bdf_from_xml]))
     LOG.debug("Number of GPUs passed through in the VM XML is %s", num_gpu_bdf_from_xml)
     LOG.debug("GPU Module IDs %s for GPUs passed through in the VM XML", gpu_mod_list_from_xml)
 
-    # Extract current GPU partitions' state and info in json format
-    output = subprocess.check_output("/usr/bin/fmpm -l --hostname " + FM_IP, shell = True)
-    gpu_partition_json = output.decode("utf-8")
-    gpu_partition_json_data = json.loads(gpu_partition_json)
-
-    gpu_partitions = list(filter(lambda x:x["numGpus"] == num_gpu_bdf_from_xml, gpu_partition_json_data["partitionInfo"]))
+    gpu_partitions = list(
+        filter(lambda x: x["numGpus"] == num_gpu_bdf_from_xml, gpu_partition_json_data["partitionInfo"]))
     if not gpu_partitions:
         LOG.debug("No supported GPU partition with %s GPUs as passed in the VM XML", num_gpu_bdf_from_xml)
         sys.exit(0)
@@ -192,12 +176,8 @@ def main():
     else:
         LOG.debug("GPU partition %s contains GPUs as passed throught in the VM XML", gpu_partition_id)
 
-    # Extract current GPU partitions' state and info in json format
-    output = subprocess.check_output("/usr/bin/fmpm -l --hostname " + FM_IP, shell = True)
-    gpu_partition_json = output.decode("utf-8")
-    gpu_partition_json_data = json.loads(gpu_partition_json)
-
-    partition = list(filter(lambda x:x["partitionId"] == int(gpu_partition_id), gpu_partition_json_data["partitionInfo"]))
+    partition = list(
+        filter(lambda x: x["partitionId"] == int(gpu_partition_id), gpu_partition_json_data["partitionInfo"]))
 
     if not partition:
         LOG.debug("Get Partition state: No partitionInfo matching partition ID %s", gpu_partition_id)
@@ -211,7 +191,7 @@ def main():
     for gpu in gpu_infos:
         gpus_bdf_list.append(gpus_mod_to_bdf[str(gpu["physicalId"])])
     # action is prepare during VM create
-    if (action == 'prepare'): 
+    if (action == 'prepare'):
         if partition_isActive != 0:
             LOG.debug("GPU Partition %s is already active during action = prepare", gpu_partition_id)
             sys.exit(0)
