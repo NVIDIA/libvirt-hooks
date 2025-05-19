@@ -87,8 +87,8 @@ def main():
     try:
         output = subprocess.check_output("/usr/bin/fmpm -l --hostname " + FM_IP, shell=True)
     except subprocess.CalledProcessError as e:
-        ret = sys.stderr.write('/usr/bin/fmpm -l --hostname ' + FM_IP + ' failed: ' + str(e.returncode))
-        sys.exit(0)
+        sys.stderr.write('/usr/bin/fmpm -l --hostname ' + FM_IP + ' failed: ' + str(e.returncode))
+        sys.exit(1)
 
     gpu_partition_json = output.decode("utf-8")
     gpu_partition_json_data = json.loads(gpu_partition_json)
