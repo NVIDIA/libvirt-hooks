@@ -31,10 +31,10 @@ def gpusExist(xmlHostdevs):
     num_gpus = 0
 
     gpu_bdfs = set()
-    output = subprocess.run(r'nvidia-smi -q | grep -i "GPU 00000000"', shell=True, universal_newlines=True, stdout=subprocess.PIPE).stdout
+    output = subprocess.run(r'lspci | grep 3D | grep NVIDIA | cut -d" " -f1', shell=True, universal_newlines=True, stdout=subprocess.PIPE).stdout
     for line in output.split("\n"):
         if line:
-            gpu_bdfs.add(line.split(":",1)[1].lower())
+            gpu_bdfs.add(line.lower())
 
     for pci_hostdev_addr in xmlHostdevs:
         if pci_hostdev_addr is None:
